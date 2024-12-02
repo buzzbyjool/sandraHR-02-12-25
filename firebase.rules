@@ -1,0 +1,70 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    function isCompanyMember(companyId) {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.company.companyId == companyId;
+    }
+
+    function isCompanyAdmin(companyId) {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.company.role == 'admin' &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.company.companyId == companyId;
+    }
+
+    // User profiles
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isOwner(userId);
+      allow update: if isAuthenticated() && isOwner(userId);
+      allow delete: if isAuthenticated() && isOwner(userId);
+    }
+
+    // Companies
+    match /companies/{companyId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isCompanyAdmin(companyId);
+      allow delete: if isCompanyAdmin(companyId);
+    }
+
+    // Company members
+    match /companies/{companyId}/members/{userId} {
+      allow read: if isCompanyMember(companyId);
+      allow write: if isCompanyAdmin(companyId);
+    }
+
+    // Candidates
+    match /candidates/{candidateId} {
+      allow read: if isAuthenticated() && 
+        (isCompanyMember(resource.data.companyId) || isCompanyAdmin(resource.data.companyId));
+      allow write: if isAuthenticated() && 
+        (isCompanyMember(resource.data.companyId) || isCompanyAdmin(resource.data.companyId));
+    }
+
+    // Jobs
+    match /jobs/{jobId} {
+      allow read: if isAuthenticated() && 
+        (isCompanyMember(resource.data.companyId) || isCompanyAdmin(resource.data.companyId));
+      allow write: if isAuthenticated() && 
+        (isCompanyMember(resource.data.companyId) || isCompanyAdmin(resource.data.companyId));
+    }
+
+    // CandidateJobs (junction table)
+    match /candidateJobs/{candidateJobId} {
+      allow read: if isAuthenticated() && 
+        (isCompanyMember(resource.data.companyId) || isCompanyAdmin(resource.data.companyId));
+      allow write: if isAuthenticated() && 
+        (isCompanyMember(resource.data.companyId) || isCompanyAdmin(resource.data.companyId));
+    }
+  }
+}
